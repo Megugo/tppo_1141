@@ -1,6 +1,8 @@
 import asyncio
 import json
 import ast
+import sys
+import re
 
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -18,6 +20,23 @@ writers_for_broadcast = []
 
 json_out = {"data":""}
 
+def ipXport_check():
+    try:
+        ip = sys.argv[1]
+        port = sys.argv[2]
+    except Exception:
+        print("Not enough params")
+        exit()
+    ipv4_pattern = "^(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+    port_pattern = "^((6553[0-5])|(655[0-2][0-9])|(65[0-4][0-9]{2})|(6[0-4][0-9]{3})|([1-5][0-9]{4})|([0-5]{0,5})|([0-9]{1,4}))$"
+    if not re.match(ipv4_pattern, ip):
+        print("Wrong ip")
+        exit()
+    if not re.match(port_pattern , port):
+        print("Wrong port")
+        exit()
+    return ip,int(port)
+
 def get_reley_status():
     with open("f.txt", "r") as f:
         try:
@@ -30,6 +49,13 @@ def get_reley_status():
         except IndexError:
             print("Error: Not enough values from reley file")
             exit(0)
+
+def disconnection_message(addr,broadcasting):
+    print(f"{addr} disconnected")
+    if broadcasting == True:
+        writers_for_broadcast.remove(writer)
+        print(f"{addr} removed from broadcast\n")
+    return None
 
 class MyEventHandler(FileSystemEventHandler):
     def on_closed(self, event):
@@ -47,6 +73,8 @@ def send_json(writer,json_dict):
         writer.write(json.dumps(json_dict).encode())
     except ConnectionError as e:
         print(f"Can't send to {writer.get_extra_info('peername')[0]}.\n Error: ", e)
+    except Exception as ex:
+        print(f"Can't send to {writer.get_extra_info('peername')[0]}.\n Error: ", e)
 
 async def handler(reader: asyncio.StreamReader,writer: asyncio.StreamWriter)->None:
     out_data = None
@@ -60,6 +88,9 @@ async def handler(reader: asyncio.StreamReader,writer: asyncio.StreamWriter)->No
         try:
             data = json.loads(raw_data)
         except json.decoder.JSONDecodeError as e:
+            if not raw_data:
+                disconnection_message(addr,broadcasting)
+                break
             send_json(writer,{"data":f"Error: {e}"})
             print("Error: ", e)
             continue
@@ -141,20 +172,18 @@ async def handler(reader: asyncio.StreamReader,writer: asyncio.StreamWriter)->No
         await writer.drain()
 
         if data["command"] == "exit" or not data["command"]:
-            print(f"{addr} disconnected")
-            if broadcasting == True:
-                writers_for_broadcast.remove(writer)
-                print(f"{addr} removed from broadcast\n")
+            disconnection_message(addr,broadcasting)
             break
 
     writer.close()
 
-async def run_server() -> None:
-    server = await asyncio.start_server(handler, "127.0.0.1", 8888)
+async def run_server(ip,port) -> None:
+    server = await asyncio.start_server(handler, ip, port)
     async with server:
         await server.serve_forever()
 
 if __name__ == "__main__":
+    ip,port = ipXport_check()
 
     get_reley_status()
 
@@ -162,7 +191,7 @@ if __name__ == "__main__":
     observer.schedule(MyEventHandler(), ".")
     observer.start()
 
-    asyncio.run(run_server())
+    asyncio.run(run_server(ip,port))
 
     observer.stop()
     observer.join()

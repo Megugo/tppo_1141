@@ -1,5 +1,24 @@
 import asyncio
 import json
+import re
+import sys
+
+def ipXport_check():
+    try:
+        ip = sys.argv[1]
+        port = sys.argv[2]
+    except Exception:
+        print("Not enough params")
+        exit()
+    ipv4_pattern = "^(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+    port_pattern = "^((6553[0-5])|(655[0-2][0-9])|(65[0-4][0-9]{2})|(6[0-4][0-9]{3})|([1-5][0-9]{4})|([0-5]{0,5})|([0-9]{1,4}))$"
+    if not re.match(ipv4_pattern, ip):
+        print("Wrong ip")
+        exit()
+    if not re.match(port_pattern , port):
+        print("Wrong port")
+        exit()
+    return ip,int(port)
 
 def info_message():
     print("Commands:\n 1 - переключает заданные каналы,\n формат записи '1 {chanel_number:condition}', condition = [0,1], chanel_number = [1,2,3,4,5,6]\n")
@@ -15,8 +34,9 @@ def send_json(writer,json_dict):
         print("Error: ", e)
 
 async def tcp_echo_client():
+    ip,port = ipXport_check()
     reader, writer = await asyncio.open_connection(
-        '127.0.0.1', 8888)
+        ip, port)
     info_message()
 
     while True:
